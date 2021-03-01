@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import FirebaseAuth
 
 class RegisterViewController: UIViewController {
 
@@ -103,8 +104,6 @@ class RegisterViewController: UIViewController {
         title = "Register"
         view.backgroundColor = .white
         
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Register", style: .done, target: self, action: #selector(didTapRegister))
-        
         registerButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
         
         emailField.delegate = self
@@ -176,6 +175,16 @@ class RegisterViewController: UIViewController {
         }
         
         // firebase login
+        FirebaseAuth.Auth.auth().createUser(withEmail: email, password: password, completion: { result, error in
+            guard let result = result, error == nil else {
+                print("Error creating user")
+                return
+            }
+            
+            let user = result.user
+            print("Created user \(user)")
+        })
+        
     }
 
     func alertUserLoginError() {
@@ -184,12 +193,6 @@ class RegisterViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "Dismiss", style: .cancel, handler: nil))
         
         present(alert, animated: true)
-    }
-    
-    @objc func didTapRegister() {
-        let vc = RegisterViewController()
-        vc.title = "Create Account"
-        navigationController?.pushViewController(vc, animated: true)
     }
 }
 
