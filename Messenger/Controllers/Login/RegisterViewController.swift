@@ -18,7 +18,7 @@ class RegisterViewController: UIViewController {
     
     private let imageView: UIImageView = {
         let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "person.fill")
+        imageView.image = UIImage(systemName: "person.circle.fill")
         imageView.tintColor = .gray
         imageView.contentMode = .scaleAspectFit
         imageView.layer.masksToBounds = true
@@ -175,20 +175,35 @@ class RegisterViewController: UIViewController {
         }
         
         // firebase login
-        FirebaseAuth.Auth.auth().createUser(withEmail: email, password: password, completion: { result, error in
-            guard let result = result, error == nil else {
-                print("Error creating user")
+        
+        DatabaseManager.firebase.userExists(with: email, completion: { [weak self] exist in
+            guard let strongSelf = self else {
                 return
             }
             
-            let user = result.user
-            print("Created user \(user)")
+            guard !exist else {
+                // user already exists
+                strongSelf.alertUserLoginError(message: "User with that email is already exists.")
+                return
+            }
+            
+            FirebaseAuth.Auth.auth().createUser(withEmail: email, password: password, completion: { result, error in
+                
+                guard result != nil, error == nil else {
+                    print("Error creating user")
+                    return
+                }
+                
+                DatabaseManager.firebase.insertUser(with: ChatAppUser(firstName: firstName, lastName: lastName, emailAddress: email))
+                
+                strongSelf.navigationController?.dismiss(animated: true, completion: nil)
+            })
         })
         
     }
 
-    func alertUserLoginError() {
-        let alert = UIAlertController(title: "Whoops", message: "Please complete all form", preferredStyle: .alert)
+    func alertUserLoginError(message: String = "Please complete all form") {
+        let alert = UIAlertController(title: "Whoops", message: message, preferredStyle: .alert)
         
         alert.addAction(UIAlertAction(title: "Dismiss", style: .cancel, handler: nil))
         
