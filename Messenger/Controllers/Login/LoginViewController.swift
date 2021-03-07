@@ -8,9 +8,10 @@
 import UIKit
 import FirebaseAuth
 import FBSDKLoginKit
+import GoogleSignIn
 
 class LoginViewController: UIViewController {
-
+    
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.clipsToBounds = true
@@ -68,12 +69,26 @@ class LoginViewController: UIViewController {
     
     private let fbLoginButton: FBLoginButton = {
         let button = FBLoginButton()
-        button.permissions = ["public_profile"]
+        button.permissions = ["email", "public_profile"]
         return button
     }()
     
+    private let googleLoginButton = GIDSignInButton()
+    
+    private var loginObserver: NSObjectProtocol?
+    
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        loginObserver = NotificationCenter.default.addObserver(forName: .didLogInNotification, object: nil, queue: .main, using: {[weak self]_ in
+            
+            guard let strongSelf = self else { return }
+            
+            strongSelf.navigationController?.dismiss(animated: true, completion: nil)
+        })
+        
+        GIDSignIn.sharedInstance()?.presentingViewController = self
+        
         title = "Login"
         view.backgroundColor = .white
         
@@ -93,6 +108,14 @@ class LoginViewController: UIViewController {
         scrollView.addSubview(passwordField)
         scrollView.addSubview(loginButton)
         scrollView.addSubview(fbLoginButton)
+        scrollView.addSubview(googleLoginButton)
+        
+    }
+    
+    deinit {
+        if let observer = loginObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
     
     override func viewDidLayoutSubviews() {
@@ -113,7 +136,9 @@ class LoginViewController: UIViewController {
         
         fbLoginButton.frame =
             CGRect(x: 30, y: loginButton.bottom+10, width: scrollView.width-60, height: 52)
-        fbLoginButton.frame.origin.y = loginButton.bottom+20
+        
+        googleLoginButton.frame =
+            CGRect(x: 30, y: fbLoginButton.bottom+10, width: scrollView.width-60, height: 52)
     }
     
     @objc private func loginButtonTapped() {
@@ -144,7 +169,7 @@ class LoginViewController: UIViewController {
             strongSelf.navigationController?.dismiss(animated: true, completion: nil)
         })
     }
-
+    
     func alertUserLoginError() {
         let alert = UIAlertController(title: "Whoops", message: "please complete all form", preferredStyle: .alert)
         
@@ -187,23 +212,52 @@ extension LoginViewController: LoginButtonDelegate {
             return
         }
         
+        let facebookRequest = FBSDKLoginKit.GraphRequest(graphPath: "me", parameters: ["fields": "email, name"], tokenString: token, version: nil, httpMethod: .get)
         
-        let credential = FacebookAuthProvider.credential(withAccessToken: token)
-        
-        FirebaseAuth.Auth.auth().signIn(with: credential, completion: { [weak self] result, error in
-            guard let strongSelf = self else {
+        facebookRequest.start(completionHandler: {_, result, error in
+            guard let result = result as? [String: Any],
+                  error == nil else {
+                print("Failed to make facebook graph request")
                 return
             }
             
-            guard result != nil, error == nil else {
-                if let error = error {
-                    print("Facebook credential login failed, MFA may be needed - \(error)")
+            guard let userName = result["name"] as? String,
+                  let email = result["email"] as? String else {
+                print("Failed to get email and name from fb request")
+                return
+            }
+            
+            let nameComponents = userName.components(separatedBy: " ")
+            guard nameComponents.count == 2 else {
+                return
+            }
+            
+            let firstName = nameComponents[0]
+            let lastName = nameComponents[1]
+            
+            DatabaseManager.firebase.userExists(with: email, completion: { exist in
+                if !exist {
+                    DatabaseManager.firebase.insertUser(with: ChatAppUser(firstName: firstName, lastName: lastName, emailAddress: email))
                 }
-                return
-            }
+            })
             
-            print("Successfuly logged in")
-            strongSelf.navigationController?.dismiss(animated: true, completion: nil)
+            let credential = FacebookAuthProvider.credential(withAccessToken: token)
+            
+            FirebaseAuth.Auth.auth().signIn(with: credential, completion: { [weak self] result, error in
+                guard let strongSelf = self else {
+                    return
+                }
+                
+                guard result != nil, error == nil else {
+                    if let error = error {
+                        print("Facebook credential login failed, MFA may be needed - \(error)")
+                    }
+                    return
+                }
+                
+                print("Successfuly logged in")
+                strongSelf.navigationController?.dismiss(animated: true, completion: nil)
+            })
         })
     }
 }
